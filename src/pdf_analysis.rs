@@ -22,7 +22,7 @@ const EICAR_SIGNATURE: &[u8] = b"x5o!p%@ap[4\\pzx54(p^)7cc)7}$eicar-standard-ant
 
 
 
-use std::time::Instant;
+// use std::time::Instant;
 
 // Replace the timed_step function with a simple one that just calls the function
 fn run_step<F, T>(_label: &str, mut f: F) -> T

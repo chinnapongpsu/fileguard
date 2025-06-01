@@ -6,9 +6,22 @@ mod pdf_analysis;
 pub fn scan_from_bytes(data: &[u8], source_name: &str) -> JsValue {
   web_sys::console::log_1(&format!("🔍 Analyzing data from: {}", source_name).into());
   
+  // Get the performance object for timing
+  let window = web_sys::window().expect("No window object found");
+  let performance = window.performance().expect("Performance not available");
+  
+  // Start timer
+  let start_time = performance.now();
+  
   let (file_type, result) = pdf_analysis::analyze_data(data);
   
+  // End timer and calculate duration
+  let end_time = performance.now();
+  let duration_ms = end_time - start_time;
+  let duration_secs = duration_ms / 1000.0;
+  
   web_sys::console::log_1(&format!("Detected file type: {:?}", file_type).into());
+  web_sys::console::log_1(&format!("⏱️ Execution time: {:.3} seconds", duration_secs).into());
   
   let mut findings = Vec::new();
   let status = match result {
@@ -29,6 +42,8 @@ pub fn scan_from_bytes(data: &[u8], source_name: &str) -> JsValue {
   let result_obj = js_sys::Object::new();
   js_sys::Reflect::set(&result_obj, &"fileType".into(), &format!("{:?}", file_type).into()).unwrap();
   js_sys::Reflect::set(&result_obj, &"result".into(), &status.into()).unwrap();
+  js_sys::Reflect::set(&result_obj, &"executionTimeMs".into(), &duration_ms.into()).unwrap();
+  js_sys::Reflect::set(&result_obj, &"executionTimeSec".into(), &duration_secs.into()).unwrap();
   
   let findings_array = js_sys::Array::new();
   for finding in findings {

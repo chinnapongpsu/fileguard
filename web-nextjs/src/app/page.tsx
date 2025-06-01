@@ -69,6 +69,9 @@ export default function Home() {
                 <Box sx={{ textAlign: 'left', mt: 2, width: '100%' }}>
                   <Typography variant="h6">Scan Results</Typography>
                   <Typography variant="body2">File type: {scanResult.fileType}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Execution time: {scanResult.executionTimeSec.toFixed(3)} seconds
+                  </Typography>
                   
                   <Alert 
                     severity={scanResult.result === 'Clean' ? 'success' : 'warning'}

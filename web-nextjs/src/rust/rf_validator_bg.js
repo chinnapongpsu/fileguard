@@ -19,6 +19,30 @@ function handleError(f, args) {
     }
 }
 
+const lTextDecoder = typeof TextDecoder === 'undefined' ? (0, module.require)('util').TextDecoder : TextDecoder;
+
+let cachedTextDecoder = new lTextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+
+cachedTextDecoder.decode();
+
+let cachedUint8ArrayMemory0 = null;
+
+function getUint8ArrayMemory0() {
+    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachedUint8ArrayMemory0;
+}
+
+function getStringFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
 function debugString(val) {
     // primitive types
     const type = typeof val;
@@ -86,15 +110,6 @@ function debugString(val) {
 
 let WASM_VECTOR_LEN = 0;
 
-let cachedUint8ArrayMemory0 = null;
-
-function getUint8ArrayMemory0() {
-    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
-        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
-    }
-    return cachedUint8ArrayMemory0;
-}
-
 const lTextEncoder = typeof TextEncoder === 'undefined' ? (0, module.require)('util').TextEncoder : TextEncoder;
 
 let cachedTextEncoder = new lTextEncoder('utf-8');
@@ -160,17 +175,6 @@ function getDataViewMemory0() {
     return cachedDataViewMemory0;
 }
 
-const lTextDecoder = typeof TextDecoder === 'undefined' ? (0, module.require)('util').TextDecoder : TextDecoder;
-
-let cachedTextDecoder = new lTextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-
-cachedTextDecoder.decode();
-
-function getStringFromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
-}
-
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
     getUint8ArrayMemory0().set(arg, ptr / 1);
@@ -191,6 +195,22 @@ export function scan_from_bytes(data, source_name) {
     return ret;
 }
 
+export function __wbg_call_672a4d21634d4a24() { return handleError(function (arg0, arg1) {
+    const ret = arg0.call(arg1);
+    return ret;
+}, arguments) };
+
+export function __wbg_instanceof_Window_def73ea0955fc569(arg0) {
+    let result;
+    try {
+        result = arg0 instanceof Window;
+    } catch (_) {
+        result = false;
+    }
+    const ret = result;
+    return ret;
+};
+
 export function __wbg_log_c222819a41e063d3(arg0) {
     console.log(arg0);
 };
@@ -205,6 +225,21 @@ export function __wbg_new_78feb108b6472713() {
     return ret;
 };
 
+export function __wbg_newnoargs_105ed471475aaf50(arg0, arg1) {
+    const ret = new Function(getStringFromWasm0(arg0, arg1));
+    return ret;
+};
+
+export function __wbg_now_d18023d54d4e5500(arg0) {
+    const ret = arg0.now();
+    return ret;
+};
+
+export function __wbg_performance_c185c0cdc2766575(arg0) {
+    const ret = arg0.performance;
+    return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+};
+
 export function __wbg_push_737cfc8c1432c2c6(arg0, arg1) {
     const ret = arg0.push(arg1);
     return ret;
@@ -214,6 +249,26 @@ export function __wbg_set_bb8cecf6a62b9f46() { return handleError(function (arg0
     const ret = Reflect.set(arg0, arg1, arg2);
     return ret;
 }, arguments) };
+
+export function __wbg_static_accessor_GLOBAL_88a902d13a557d07() {
+    const ret = typeof global === 'undefined' ? null : global;
+    return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+};
+
+export function __wbg_static_accessor_GLOBAL_THIS_56578be7e9f832b0() {
+    const ret = typeof globalThis === 'undefined' ? null : globalThis;
+    return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+};
+
+export function __wbg_static_accessor_SELF_37c5d418e4bf5819() {
+    const ret = typeof self === 'undefined' ? null : self;
+    return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+};
+
+export function __wbg_static_accessor_WINDOW_5de37043a91a9c40() {
+    const ret = typeof window === 'undefined' ? null : window;
+    return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+};
 
 export function __wbindgen_debug_string(arg0, arg1) {
     const ret = debugString(arg1);
@@ -232,6 +287,16 @@ export function __wbindgen_init_externref_table() {
     table.set(offset + 2, true);
     table.set(offset + 3, false);
     ;
+};
+
+export function __wbindgen_is_undefined(arg0) {
+    const ret = arg0 === undefined;
+    return ret;
+};
+
+export function __wbindgen_number_new(arg0) {
+    const ret = arg0;
+    return ret;
 };
 
 export function __wbindgen_string_new(arg0, arg1) {

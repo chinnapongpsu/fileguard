@@ -21,10 +21,12 @@ export interface ScanResult {
   fileType: string;
   result: 'Clean' | 'Suspicious';
   findings: string[];
+  executionTimeMs: number;
+  executionTimeSec: number;
 }
 
 interface InputFileUploadProps {
-  validator: { scan_from_bytes: (data: Uint8Array, fileName: string) => { fileType?: string; result: string; findings?: string[] } } | null;
+  validator: { scan_from_bytes: (data: Uint8Array, fileName: string) => { fileType?: string; result: string; findings?: string[], executionTimeMs?: number | string, executionTimeSec?: number | string } } | null;
   onScanComplete?: (result: ScanResult | null) => void;
 }
 
@@ -48,15 +50,31 @@ export default function InputFileUpload({ validator, onScanComplete }: InputFile
         // Convert to Uint8Array for WASM
         const uint8Array = new Uint8Array(arrayBuffer);
         
-        // Call the WASM function and get the result directly
+        // Call the WASM function
         const result = validator.scan_from_bytes(uint8Array, file.name);
-        
-        // Convert the result to the expected ScanResult format
+        // console.log("Raw result from WASM:", result);
+
+        // Ensure executionTimeMs and executionTimeSec are properly converted to numbers
+        const executionTimeMs = typeof result.executionTimeMs === 'number'
+          ? result.executionTimeMs
+          : result.executionTimeMs !== undefined
+            ? parseFloat(result.executionTimeMs)
+            : 0;
+        const executionTimeSec = typeof result.executionTimeSec === 'number'
+          ? result.executionTimeSec
+          : result.executionTimeSec !== undefined
+            ? parseFloat(result.executionTimeSec)
+            : 0;
+
         const scanResult: ScanResult = {
           fileType: result.fileType || "Unknown",
           result: (result.result === "Clean" ? "Clean" : "Suspicious") as "Clean" | "Suspicious",
-          findings: Array.isArray(result.findings) ? result.findings : []
+          findings: Array.isArray(result.findings) ? result.findings : [],
+          executionTimeMs,
+          executionTimeSec
         };
+
+        // console.log("Processed scan result:", scanResult);
         
         // Call the callback with the result
         if (onScanComplete) {
