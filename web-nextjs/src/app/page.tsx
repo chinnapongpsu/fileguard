@@ -12,10 +12,10 @@ import {
   Typography,
 } from "@mui/material";
 import { Fragment, useEffect, useState } from "react";
-
+import * as rf_validator from "rf_validator";
 export default function Home() {
   const [validator, setValidator] = useState<
-    typeof import("@/rust/rf_validator") | null
+    typeof rf_validator | null
   >(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +23,7 @@ export default function Home() {
   useEffect(() => {
     async function loadWasm() {
       try {
-        const wasmModule = await import("@/rust/rf_validator");
+        const wasmModule = await rf_validator;
         // await wasmModule.default(); // initialize wasm
         setValidator(wasmModule);
       } catch (err) {

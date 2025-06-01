@@ -1,3 +1,0 @@
-# fileguard
-
-cargo run -- ./testpdf
