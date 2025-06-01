@@ -1,29 +1,17 @@
-"use client";
+'use client'
 import InputFileUpload, { ScanResult } from "@/components/file-upload";
-import {
-  Alert,
-  Box,
-  Container,
-  Grid,
-  List,
-  ListItem,
-  ListItemText,
-  Paper,
-  Typography,
-} from "@mui/material";
+import { Alert, Box, Container, Grid, List, ListItem, ListItemText, Paper, Typography } from "@mui/material";
 import { Fragment, useEffect, useState } from "react";
 import * as rf_validator from "rf_validator";
 export default function Home() {
-  const [validator, setValidator] = useState<
-    typeof rf_validator | null
-  >(null);
+  const [validator, setValidator] = useState<typeof import('@/rust/rf_validator') | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadWasm() {
       try {
-        const wasmModule = await rf_validator;
+        const wasmModule = await import('@/rust/rf_validator');
         // await wasmModule.default(); // initialize wasm
         setValidator(wasmModule);
       } catch (err) {
@@ -65,43 +53,31 @@ export default function Home() {
                 Upload a file to scan it for potential threats
               </Typography>
             </Grid>
-
+            
             <Grid size={12}>
-              <InputFileUpload
-                validator={validator}
-                onScanComplete={handleScanComplete}
-              />
+              <InputFileUpload validator={validator} onScanComplete={handleScanComplete} />
             </Grid>
 
             {error && (
               <Grid size={12}>
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {error}
-                </Alert>
+                <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>
               </Grid>
             )}
 
             {scanResult && (
-              <Grid size={12} sx={{ width: "100%", mt: 2 }}>
-                <Box sx={{ textAlign: "left", mt: 2, width: "100%" }}>
+              <Grid size={12} sx={{ width: '100%', mt: 2 }}>
+                <Box sx={{ textAlign: 'left', mt: 2, width: '100%' }}>
                   <Typography variant="h6">Scan Results</Typography>
-                  <Typography variant="body2">
-                    File type: {scanResult.fileType}
-                  </Typography>
+                  <Typography variant="body2">File type: {scanResult.fileType}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Execution time: {scanResult.executionTimeSec.toFixed(3)}{" "}
-                    seconds
+                    Execution time: {scanResult.executionTimeSec.toFixed(3)} seconds
                   </Typography>
-
-                  <Alert
-                    severity={
-                      scanResult.result === "Clean" ? "success" : "warning"
-                    }
+                  
+                  <Alert 
+                    severity={scanResult.result === 'Clean' ? 'success' : 'warning'}
                     sx={{ mt: 1 }}
                   >
-                    {scanResult.result === "Clean"
-                      ? "No threats detected"
-                      : "Potential threats detected"}
+                    {scanResult.result === 'Clean' ? 'No threats detected' : 'Potential threats detected'}
                   </Alert>
 
                   {scanResult.findings.length > 0 && (
@@ -109,10 +85,7 @@ export default function Home() {
                       <Typography variant="subtitle1">Findings:</Typography>
                       <List dense>
                         {scanResult.findings.map((finding, index) => (
-                          <ListItem
-                            key={index}
-                            divider={index < scanResult.findings.length - 1}
-                          >
+                          <ListItem key={index} divider={index < scanResult.findings.length - 1}>
                             <ListItemText primary={finding} />
                           </ListItem>
                         ))}
