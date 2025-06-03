@@ -42,6 +42,12 @@ pub enum PdfThreatLevel {
     Suspicious(Vec<String>),
 }
 
+#[derive(Debug)]
+pub enum AnalysisResult {
+  Clean,
+  Suspicious(Vec<String>),
+}
+
 const ENTROPY_SUSPICIOUS_THRESHOLD: f64 = 7.9;
 
 const RISK_THRESHOLD: u32 = 10;
@@ -119,7 +125,7 @@ pub fn analyze_file(file_path: &str) {
 
 
 fn analyze_pdf(data: &[u8]) -> PdfThreatLevel {
-    let content = String::from_utf8_lossy(data); // No .to_lowercase()
+    let content = String::from_utf8_lossy(data).to_lowercase();
     let mut findings = Vec::new();
     let mut score = 0;
 
@@ -248,3 +254,62 @@ fn analyze_jpg(data: &[u8]) -> Vec<String> {
 
     findings
 }
+
+
+
+// New function that works with byte data directly
+pub fn analyze_data(data: &[u8]) -> (FileType, AnalysisResult) {
+    let file_type = detect_file_type(data);
+    
+    let result = match file_type {
+      FileType::Pdf => match analyze_pdf(data) {
+        PdfThreatLevel::Clean => AnalysisResult::Clean,
+        PdfThreatLevel::Suspicious(findings) => AnalysisResult::Suspicious(findings),
+      },
+      FileType::Docx => {
+        let findings = analyze_docx(data);
+        if findings.is_empty() {
+          AnalysisResult::Clean
+        } else {
+          AnalysisResult::Suspicious(findings)
+        }
+      },
+      FileType::Png => {
+        let findings = analyze_png(data);
+        if findings.is_empty() {
+          AnalysisResult::Clean
+        } else {
+          AnalysisResult::Suspicious(findings)
+        }
+      },
+      FileType::Jpg => {
+        let findings = analyze_jpg(data);
+        if findings.is_empty() {
+          AnalysisResult::Clean
+        } else {
+          AnalysisResult::Suspicious(findings)
+        }
+      },
+      _ => AnalysisResult::Clean, // Default to clean for unsupported types
+    };
+    
+    (file_type, result)
+  }
+  
+  // Function to display analysis results
+  fn display_analysis_result(data: &[u8]) {
+    let (file_type, result) = analyze_data(data);
+    
+    println!("Detected file type: {:?}", file_type);
+    
+    match result {
+      AnalysisResult::Clean => println!("{:?} Analysis: Clean", file_type),
+      AnalysisResult::Suspicious(findings) => {
+        println!("{:?} Analysis: Suspicious", file_type);
+        for finding in findings {
+          println!("- {}", finding);
+        }
+      }
+    }
+  }
+  
