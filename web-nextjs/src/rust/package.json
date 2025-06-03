@@ -1,0 +1,17 @@
+{
+  "name": "rf_validator",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "rf_validator_bg.wasm",
+    "rf_validator.js",
+    "rf_validator_bg.js",
+    "rf_validator.d.ts"
+  ],
+  "main": "rf_validator.js",
+  "types": "rf_validator.d.ts",
+  "sideEffects": [
+    "./rf_validator.js",
+    "./snippets/*"
+  ]
+}
