@@ -1,255 +1,214 @@
-const fs = require("fs");
-const path = require("path");
-const crypto = require("crypto");
-const AdmZip = require("adm-zip");
+use std::fs::File;
+use std::io::Cursor;
+use std::process;
+use memmap2::Mmap;
+use zip::ZipArchive;
 
-// Constants
-const RISK_THRESHOLD = 10;
-const ENTROPY_THRESHOLD = 7.9;
-const IMAGE_KEYWORDS = ["powershell", "cmd.exe", "wscript", "mimikatz", "dropper", ".ps1"];
-const EICAR = "x5o!p%@ap[4\\pzx54(p^)7cc)7}$eicar-standard-antivirus-test-file!$h+h*";
+use crate::filetype::{detect_file_type, FileType};
 
-// Regex patterns
-const patterns = {
-  js: /\/\s*\/javascript\s+\/js/i,
-  launch: /\/\s*\/launch\s+\/f\s+\(([^)]+)\)/i,
-  openAction: /\/openaction\s+<<[^>]*(\/js|\/launch)[^>]*>>/i,
-  embeddedFile: /\/embeddedfile|\/filespec/i,
-  xfa: /\/xfa/i,
-  unc: /\\\\[a-z0-9][a-z0-9_.-]{1,98}[a-z0-9]\\[^\s\\/:*?"<>|]{2,}/i,
-  uri: /\/\s*\/uri\s*\/uri\s*\(([^)]+)\)/gi,
-};
+use once_cell::sync::Lazy;
+use regex::bytes::Regex;
 
-function calculateEntropy(buffer) {
-  const counts = new Array(256).fill(0);
-  for (let i = 0; i < buffer.length; i++) {
-    counts[buffer[i]]++;
-  }
-  const len = buffer.length;
-  let entropy = 0;
-  for (let count of counts) {
-    if (count === 0) continue;
-    const p = count / len;
-    entropy -= p * Math.log2(p);
-  }
-  return entropy;
+static JS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)/javascript").unwrap());
+static LAUNCH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)/launch\\s*\\(([^)]+)\\)").unwrap());
+static OPENACTION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)/openaction\\s*<<[^>]*(/js|/launch)[^>]*>>").unwrap());
+static UNC_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\\\\[a-z0-9][a-z0-9_.-]{1,98}\\[^"]*?").unwrap());
+static URI_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)/uri\\s*/uri\\s*\\(([^)]+)\\)").unwrap());
+
+const EICAR_SIGNATURE: &[u8] = b"x5o!p%@ap[4\\pzx54(p^)7cc)7}$eicar-standard-antivirus-test-file!$h+h*";
+const ENTROPY_SUSPICIOUS_THRESHOLD: f64 = 7.9;
+const RISK_THRESHOLD: u32 = 10;
+const IMAGE_ENTROPY_THRESHOLD: f64 = 7.9;
+const DOCX_SUSPICIOUS_KEYWORDS: [&str; 6] = [
+    "powershell", "cmd.exe", "wscript", "mimikatz", "dropper", ".ps1",
+];
+
+#[derive(Debug)]
+pub enum PdfThreatLevel {
+    Clean,
+    Suspicious(Vec<String>),
 }
 
-function analyzePdf(buffer) {
-  console.time("Total PDF Analysis");
-  const content = buffer.toString("utf8").toLowerCase();
-  let findings = [];
-  let score = 0;
+pub fn analyze_file(file_path: &str) {
+    let file = match File::open(file_path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to open file: {}", e);
+            process::exit(1);
+        }
+    };
 
-  const timedCheck = (label, fn) => {
-    console.time(label);
-    fn();
-    console.timeEnd(label);
-  };
+    let mmap = unsafe { Mmap::map(&file).expect("Failed to memory map file") };
+    let buffer = &mmap[..];
 
-  timedCheck("JS Regex", () => {
-    if (patterns.js.test(content)) {
-      findings.push("Embedded JavaScript action detected");
-      score += 8;
+    let file_type = detect_file_type(buffer);
+    println!("Detected file type: {:?}", file_type);
+
+    match file_type {
+        FileType::Pdf => match analyze_pdf(buffer) {
+            PdfThreatLevel::Clean => println!("PDF Analysis: Clean"),
+            PdfThreatLevel::Suspicious(f) => {
+                println!("PDF Analysis: Suspicious");
+                for ff in f {
+                    println!("- {}", ff);
+                }
+            }
+        },
+        FileType::Docx => {
+            let findings = analyze_docx(buffer);
+            if !findings.is_empty() {
+                println!("DOCX Analysis: Suspicious");
+                for f in findings {
+                    println!("- {}", f);
+                }
+            } else {
+                println!("DOCX Analysis: Clean");
+            }
+        }
+        FileType::Png => {
+            let findings = analyze_image(buffer, "PNG");
+            for f in findings {
+                println!("- {}", f);
+            }
+        }
+        FileType::Jpg => {
+            let findings = analyze_image(buffer, "JPG");
+            for f in findings {
+                println!("- {}", f);
+            }
+        }
+        _ => println!("Unsupported or unknown file type."),
     }
-  });
-
-  timedCheck("Launch Regex", () => {
-    const match = content.match(patterns.launch);
-    if (match) {
-      findings.push(`Launch action to '${match[1]}'`);
-      score += match[1].includes(".exe") ? 10 : 5;
-    }
-  });
-
-  timedCheck("OpenAction Regex", () => {
-    if (patterns.openAction.test(content)) {
-      findings.push("Executable OpenAction (JS or Launch) detected");
-      score += 7;
-    }
-  });
-
-  timedCheck("Embedded File & XFA", () => {
-    if (patterns.embeddedFile.test(content)) {
-      findings.push("Embedded file object found");
-      score += 5;
-    }
-
-    if (patterns.xfa.test(content)) {
-      findings.push("XFA form structure detected");
-      score += 2;
-      if (content.includes("http://") || content.includes("file://") || content.includes("\\\\")) {
-        findings.push("External reference in XFA");
-        score += 6;
-      }
-    }
-  });
-
-  timedCheck("EICAR Signature", () => {
-    if (content.includes(EICAR)) {
-      findings.push("EICAR test signature detected");
-      score += 10;
-    }
-  });
-
-  timedCheck("Entropy", () => {
-    const entropy = calculateEntropy(buffer);
-    if (entropy >= ENTROPY_THRESHOLD) {
-      findings.push(`High entropy detected: ${entropy.toFixed(2)}`);
-      score += 4;
-    }
-  });
-
-  timedCheck("UNC Path", () => {
-    if (patterns.unc.test(content)) {
-      findings.push("UNC path reference detected");
-      score += 4;
-    }
-  });
-
-  timedCheck("Suspicious URI", () => {
-    let match;
-    while ((match = patterns.uri.exec(content)) !== null) {
-      const uri = match[1];
-      if (
-        uri.startsWith("file://") ||
-        uri.startsWith("http://127.") ||
-        IMAGE_KEYWORDS.some((kw) => uri.includes(kw))
-      ) {
-        findings.push(`Suspicious URI action: ${uri}`);
-        score += 6;
-      }
-    }
-  });
-
-  console.timeEnd("Total PDF Analysis");
-  return { verdict: score >= RISK_THRESHOLD ? "Suspicious" : "Clean", findings, score };
 }
 
-function analyzeDocx(buffer) {
-  console.time("DOCX Analysis");
-  const findings = [];
-  try {
-    const zip = new AdmZip(buffer);
-    const entries = zip.getEntries();
-    for (let entry of entries) {
-      const name = entry.entryName.toLowerCase();
-      if (name.includes("vba") || name.endsWith("vbaproject.bin")) {
-        findings.push("Embedded VBA macro detected");
-      }
-      if (name.includes("docprops") || name.endsWith(".xml")) {
-        const content = entry.getData().toString("utf8").toLowerCase();
-        IMAGE_KEYWORDS.forEach((kw) => {
-          if (content.includes(kw)) {
-            findings.push(`Suspicious keyword '${kw}' found in metadata`);
-          }
-        });
-      }
+pub fn analyze_pdf(data: &[u8]) -> PdfThreatLevel {
+    let mut findings = Vec::new();
+    let mut score = 0;
+
+    if JS_REGEX.is_match(data) {
+        findings.push("Embedded JavaScript action detected".to_string());
+        score += 8;
     }
-  } catch (err) {
-    findings.push("Failed to parse DOCX");
-  }
-  console.timeEnd("DOCX Analysis");
-  return findings;
-}
 
-function analyzeImage(buffer, type) {
-  console.time(`${type} Analysis`);
-  const findings = [];
-  const entropy = calculateEntropy(buffer);
-  if (entropy >= ENTROPY_THRESHOLD) {
-    findings.push(`High entropy detected in ${type}: ${entropy.toFixed(2)}`);
-  }
-  const content = buffer.toString("utf8").toLowerCase();
-  IMAGE_KEYWORDS.forEach((kw) => {
-    if (content.includes(kw)) {
-      findings.push(`Suspicious keyword '${kw}' found in ${type}`);
+    for cap in LAUNCH_REGEX.captures_iter(data) {
+        if let Some(target) = cap.get(1) {
+            let t = String::from_utf8_lossy(target.as_bytes());
+            findings.push(format!("Launch action to '{}'", t));
+            score += if t.contains(".exe") || t.contains("cmd.exe") { 10 } else { 5 };
+        }
     }
-  });
-  console.timeEnd(`${type} Analysis`);
-  return findings;
-}
 
-// Determine file type by extension (simple)
-function detectFileType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === ".pdf") return "pdf";
-  if (ext === ".docx") return "docx";
-  if (ext === ".png") return "png";
-  if (ext === ".jpg" || ext === ".jpeg") return "jpg";
-  return "unknown";
-}
+    if OPENACTION_REGEX.is_match(data) {
+        findings.push("Executable OpenAction (JS or Launch) detected".to_string());
+        score += 7;
+    }
 
-function analyzeFile(filePath) {
-  const buffer = fs.readFileSync(filePath);
-  const type = detectFileType(filePath);
-  console.log(`🔍 Analyzing file: ${filePath}`);
-  console.log(`📂 Detected type: ${type.toUpperCase()}`);
+    if data.windows(13).any(|w| w.eq_ignore_ascii_case(b"/embeddedfile"))
+        || data.windows(9).any(|w| w.eq_ignore_ascii_case(b"/filespec")) {
+        findings.push("Embedded file object found".to_string());
+        score += 5;
+    }
 
-  if (type === "pdf") {
-    const { verdict, findings, score } = analyzePdf(buffer);
-    console.log(`🧪 Verdict: ${verdict} (Score: ${score})`);
-    findings.forEach((f) => console.log("- " + f));
-  } else if (type === "docx") {
-    const findings = analyzeDocx(buffer);
-    if (findings.length > 0) {
-      console.log("🧪 Verdict: Suspicious");
-      findings.forEach((f) => console.log("- " + f));
+    let obj_count = data.windows(4).filter(|w| *w == b" obj").count();
+    if obj_count > 3000 {
+        findings.push(format!("High object count: {}", obj_count));
+        score += 3;
+    }
+
+    if data.windows(4).any(|w| w.eq_ignore_ascii_case(b"/xfa")) {
+        findings.push("XFA form structure detected".to_string());
+        score += 2;
+        if data.windows(7).any(|w| w.eq_ignore_ascii_case(b"http://"))
+            || data.windows(7).any(|w| w.eq_ignore_ascii_case(b"file://"))
+            || data.windows(2).any(|w| w == b"\\") {
+            findings.push("External reference in XFA (possible XSLT injection)".to_string());
+            score += 6;
+        }
+    }
+
+    if data.windows(EICAR_SIGNATURE.len()).any(|w| w.eq_ignore_ascii_case(EICAR_SIGNATURE)) {
+        findings.push("EICAR test signature detected".to_string());
+        score += 10;
+    }
+
+    let entropy = calculate_entropy(data);
+    if entropy >= ENTROPY_SUSPICIOUS_THRESHOLD {
+        findings.push(format!("High entropy detected: {:.2}", entropy));
+        score += 4;
+    }
+
+    if UNC_REGEX.is_match(data) {
+        findings.push("UNC path reference detected (network callback possible)".to_string());
+        score += 4;
+    }
+
+    for cap in URI_REGEX.captures_iter(data) {
+        if let Some(uri) = cap.get(1) {
+            let u = String::from_utf8_lossy(uri.as_bytes()).to_lowercase();
+            let suspicious_keywords = ["mimikatz", "cobaltstrike", "powershell", "dropper", "cmd.exe", "payload", "rat", ".ps1", ".vbs", ".bat", ".scr", ".exe"];
+            if u.starts_with("file://") || u.starts_with("http://localhost") || u.starts_with("http://127.") || suspicious_keywords.iter().any(|kw| u.contains(kw)) {
+                findings.push(format!("Suspicious URI action: {}", u));
+                score += 6;
+            }
+        }
+    }
+
+    if score >= RISK_THRESHOLD {
+        findings.push(format!("⚠️ Risk score = {} (threshold = {})", score, RISK_THRESHOLD));
+        PdfThreatLevel::Suspicious(findings)
     } else {
-      console.log("🧪 Verdict: Clean");
+        PdfThreatLevel::Clean
     }
-  } else if (type === "png" || type === "jpg") {
-    const findings = analyzeImage(buffer, type);
-    if (findings.length > 0) {
-      console.log("🧪 Verdict: Suspicious");
-      findings.forEach((f) => console.log("- " + f));
-    } else {
-      console.log("🧪 Verdict: Clean");
-    }
-  } else {
-    console.log("⚠️ Unsupported file type");
-  }
 }
 
-
-function isSupportedFile(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return [".pdf", ".docx", ".jpg", ".jpeg", ".png"].includes(ext);
-}
-
-function walkDirectory(dir) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walkDirectory(fullPath);
-    } else if (entry.isFile() && isSupportedFile(fullPath)) {
-      try {
-        analyzeFile(fullPath);
-        console.log("=".repeat(60));
-      } catch (err) {
-        console.error(`❌ Failed to analyze ${fullPath}: ${err.message}`);
-      }
+pub fn calculate_entropy(data: &[u8]) -> f64 {
+    let mut freq = [0usize; 256];
+    for &b in data {
+        freq[b as usize] += 1;
     }
-  }
+    let len = data.len() as f64;
+    freq.iter()
+        .filter(|&&count| count > 0)
+        .map(|&count| {
+            let p = count as f64 / len;
+            -p * p.log2()
+        })
+        .sum()
 }
 
-// CLI
-if (require.main === module) {
-  const args = process.argv.slice(2);
-  if (args.length !== 1) {
-    console.error("Usage: node analyze_file.js <file_or_directory>");
-    process.exit(1);
-  }
+pub fn analyze_docx(data: &[u8]) -> Vec<String> {
+    let mut findings = Vec::new();
+    let cursor = Cursor::new(data);
+    if let Ok(mut archive) = ZipArchive::new(cursor) {
+        for i in 0..archive.len() {
+            if let Ok(mut file) = archive.by_index(i) {
+                let name = file.name().to_lowercase();
+                if name.contains("vba") || name.ends_with("vbaproject.bin") {
+                    findings.push("Embedded VBA macro detected".to_string());
+                }
+                if name.contains("docprops") || name.ends_with(".xml") {
+                    let mut content = String::new();
+                    if file.read_to_string(&mut content).is_ok() {
+                        for kw in &DOCX_SUSPICIOUS_KEYWORDS {
+                            if content.to_lowercase().contains(kw) {
+                                findings.push(format!("Suspicious keyword '{}' found in metadata or XML", kw));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    findings
+}
 
-  const targetPath = args[0];
-  const stat = fs.statSync(targetPath);
-  if (stat.isFile()) {
-    analyzeFile(targetPath);
-  } else if (stat.isDirectory()) {
-    walkDirectory(targetPath);
-  } else {
-    console.error("❌ Provided path is neither file nor directory.");
-    process.exit(1);
-  }
+pub fn analyze_image(data: &[u8], label: &str) -> Vec<String> {
+    let mut findings = Vec::new();
+    if !data.is_empty() {
+        let entropy = calculate_entropy(data);
+        if entropy > IMAGE_ENTROPY_THRESHOLD {
+            findings.push(format!("High entropy detected in {}: {:.2}", label, entropy));
+        }
+    }
+    findings
 }
