@@ -1,9 +1,15 @@
-import * as React from 'react';
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
-import { ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import theme from '@/libs/theme';
-import InitColorSchemeScript from '@mui/material/InitColorSchemeScript';
+import * as React from "react";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
+import { ThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import theme from "@/libs/theme";
+import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Chinny's Scanner",
+  description: "Upload a file to scan it for potential threats",
+};
 
 export default function RootLayout(props: { children: React.ReactNode }) {
   return (
